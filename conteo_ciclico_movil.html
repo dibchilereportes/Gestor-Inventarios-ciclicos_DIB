@@ -77,6 +77,8 @@
   .chip.activo { background: #1f4e78; color: #fff; border-color: #1f4e78; }
   .chip.activo .punto.contado { background: #8fd6a8; }
   .chip.agregar { background: #fff; border-style: dashed; color: #1f4e78; font-weight: 600; }
+  .nota-recuento { background: #ede7f6; border: 1px solid #b39ddb; border-radius: 8px; padding: 9px 10px;
+                   font-size: 12px; color: #4527a0; margin-bottom: 12px; }
   .caja-agregar { display: none; background: #f7f9fa; border: 1px solid #e7ebee; border-radius: 8px;
                   padding: 10px; margin-bottom: 12px; }
   .caja-agregar input { margin-bottom: 8px; }
@@ -151,6 +153,7 @@
       </div>
     </div>
     <div class="salidas-hoy" id="salidasHoyBox" style="display:none;"></div>
+    <div class="nota-recuento" id="notaRecuento" style="display:none;"></div>
 
     <label for="cantidadInput">Cantidad contada en esta ubicación</label>
     <input type="number" id="cantidadInput" min="0" inputmode="numeric">
@@ -300,6 +303,24 @@
   function seleccionarUbicacion(ubic) {
     ubicacionActual = ubic;
     renderChipsUbicacion();
+
+    // Si esta ubicación ya se contó antes hoy, esto es un RECUENTO — se
+    // precarga lo contado la última vez para que quede explícito que se está
+    // corrigiendo un valor existente, no cargando uno nuevo a ciegas. El
+    // cálculo agregado del SKU siempre usa el último valor por ubicación, así
+    // que un recuento reemplaza al anterior sin duplicar su efecto.
+    const previo = (actual && actual.detalleContado) ? actual.detalleContado[ubic] : null;
+    const notaBox = $("notaRecuento");
+    if (previo) {
+      $("cantidadInput").value = previo.cantidadContada;
+      notaBox.style.display = "block";
+      const signo = previo.diferencia > 0 ? "+" : "";
+      notaBox.textContent = `🔁 Recuento — ya contaste ${CLP(previo.cantidadContada)} uds aquí (dif. ${previo.diferencia === 0 ? "0" : signo + previo.diferencia}). Corrige el número si cambia.`;
+    } else {
+      $("cantidadInput").value = "";
+      notaBox.style.display = "none";
+    }
+
     mostrarDiferencia();
     mostrarSalidasHoyPosicion();
     $("cajaAgregarUbicacion").style.display = "none";
@@ -417,6 +438,8 @@
       // mano (sin registro en Odoo), la vuelve a mostrar aunque Odoo ya no
       // la traiga en "posiciones".
       actual.contadas = new Set((data.yaContadas || []).map(y => y.ubicacion));
+      actual.detalleContado = {};
+      (data.yaContadas || []).forEach(y => { actual.detalleContado[y.ubicacion] = y; });
       (data.yaContadas || []).forEach(y => {
         if (!actual.posiciones.some(p => p.ubicacion === y.ubicacion)) {
           actual.posiciones.push({
@@ -567,6 +590,8 @@
         mostrarEstado("Conteo guardado ✓ — sigue con la próxima ubicación", "cargando");
         actualizarTablaContadas(cierreSku);
         actual.contadas = new Set(cierreSku.detalle.map(d => d.ubicacion));
+        actual.detalleContado = {};
+        cierreSku.detalle.forEach(d => { actual.detalleContado[d.ubicacion] = d; });
         const pendiente = actual.posiciones.find(p => !actual.contadas.has(p.ubicacion));
         seleccionarUbicacion(pendiente ? pendiente.ubicacion : ubicacionActual);
         $("cantidadInput").value = "";
