@@ -69,6 +69,21 @@
            font-size: 12px; font-weight: 600; color: #1f4e78; text-decoration: none;
            box-shadow: 0 1px 3px rgba(0,0,0,.06); }
   .nav a.activo { background: #1f4e78; color: #fff; border-color: #1f4e78; }
+  .chips-ubicacion { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { display: flex; align-items: center; gap: 6px; background: #eef2f5; border: 1px solid #d3dae2;
+          border-radius: 20px; padding: 9px 14px; font-size: 12px; cursor: pointer; }
+  .chip .punto { width: 9px; height: 9px; border-radius: 50%; background: #b7c2cc; flex-shrink: 0; }
+  .chip .punto.contado { background: #3f8f5f; }
+  .chip.activo { background: #1f4e78; color: #fff; border-color: #1f4e78; }
+  .chip.activo .punto.contado { background: #8fd6a8; }
+  .chip.agregar { background: #fff; border-style: dashed; color: #1f4e78; font-weight: 600; }
+  .caja-agregar { display: none; background: #f7f9fa; border: 1px solid #e7ebee; border-radius: 8px;
+                  padding: 10px; margin-bottom: 12px; }
+  .caja-agregar input { margin-bottom: 8px; }
+  .caja-agregar .fila-botones button { padding: 10px; font-size: 13px; }
+  .pendientes .fila-pendiente { display: flex; justify-content: space-between; align-items: center;
+                                 gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef2f5; }
+  .pendientes .fila-pendiente button { width: auto; padding: 5px 10px; font-size: 11px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -125,8 +140,16 @@
     <div class="reservas" id="reservasBox" style="display:none;"></div>
     <div class="tabla-contadas" id="tablaContadas" style="display:none;"></div>
 
-    <label for="ubicacionSelect">Ubicación contada</label>
-    <select id="ubicacionSelect"></select>
+    <label>Ubicación contada</label>
+    <div class="chips-ubicacion" id="chipsUbicacion"></div>
+    <div class="caja-agregar" id="cajaAgregarUbicacion">
+      <label for="nuevaUbicacionInput">Nombre de la ubicación (el producto no tenía registro ahí)</label>
+      <input type="text" id="nuevaUbicacionInput" placeholder="Ej: DIB/Stock/B-12" autocomplete="off">
+      <div class="fila-botones">
+        <button type="button" class="secundario" id="btnConfirmarNuevaUbicacion">Usar esta ubicación</button>
+        <button type="button" class="peligro" id="btnCancelarNuevaUbicacion">Cancelar</button>
+      </div>
+    </div>
     <div class="salidas-hoy" id="salidasHoyBox" style="display:none;"></div>
 
     <label for="cantidadInput">Cantidad contada en esta ubicación</label>
@@ -155,6 +178,7 @@
   const CLP = (n) => Math.round(n).toLocaleString("es-CL");
 
   let actual = null; // datos del SKU consultado actualmente
+  let ubicacionActual = null; // ubicación seleccionada dentro de "actual"
 
   const isoHoy = () => {
     const d = new Date();
@@ -196,9 +220,21 @@
   function renderPendientes() {
     if (!ultimoProgreso || !ultimoProgreso.pendientes) return;
     const lista = ordenarPendientes(ultimoProgreso.pendientes);
-    $("pendientesLista").innerHTML = lista.slice(0, 30).map(p =>
-      `<div>${p.sku} — ${p.producto}${p.avance ? ` <span style="color:#c0392b;">(${p.avance} ubic.)</span>` : ""}</div>`
-    ).join("") || '<div style="color:#2e7d32;">✅ Todo contado.</div>';
+    $("pendientesLista").innerHTML = lista.slice(0, 30).map(p => `
+      <div class="fila-pendiente">
+        <span>${p.sku} — ${p.producto}${p.avance ? ` <span style="color:#c0392b;">(${p.avance} ubic.)</span>` : ""}</span>
+        <button type="button" class="secundario btn-usar-sku" data-sku="${p.sku}">▶ Usar</button>
+      </div>
+    `).join("") || '<div style="color:#2e7d32;">✅ Todo contado.</div>';
+    // Sin capturador a mano: este botón llena y consulta el SKU directo,
+    // sin que el contador tenga que copiar/pegar el código a mano.
+    $("pendientesLista").querySelectorAll(".btn-usar-sku").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sku = btn.dataset.sku;
+        $("skuInput").value = sku;
+        consultarSku(sku);
+      });
+    });
   }
   $("ordenPendientes").addEventListener("change", renderPendientes);
 
@@ -237,12 +273,15 @@
 
   function limpiarResultado() {
     actual = null;
+    ubicacionActual = null;
     $("resultado").style.display = "none";
     $("diferenciaBox").style.display = "none";
     $("cierreSkuBox").style.display = "none";
     $("reservasBox").style.display = "none";
     $("tablaContadas").style.display = "none";
     $("salidasHoyBox").style.display = "none";
+    $("cajaAgregarUbicacion").style.display = "none";
+    $("chipsUbicacion").innerHTML = "";
     $("btnConfirmar").style.display = "block";
     $("btnConfirmar").disabled = false;
     $("btnConfirmar").textContent = "Confirmar conteo";
@@ -252,10 +291,73 @@
   }
 
   function posicionSeleccionada() {
-    if (!actual || !actual.posiciones) return null;
-    const ubic = $("ubicacionSelect").value;
-    return actual.posiciones.find(p => p.ubicacion === ubic) || null;
+    if (!actual || !actual.posiciones || !ubicacionActual) return null;
+    return actual.posiciones.find(p => p.ubicacion === ubicacionActual) || null;
   }
+
+  // Cambia la ubicación activa (clic en un chip) y refresca todo lo que
+  // depende de ella: diferencia en pantalla y salidas de hoy.
+  function seleccionarUbicacion(ubic) {
+    ubicacionActual = ubic;
+    renderChipsUbicacion();
+    mostrarDiferencia();
+    mostrarSalidasHoyPosicion();
+    $("cajaAgregarUbicacion").style.display = "none";
+    $("cantidadInput").focus();
+  }
+
+  // Lista de "chips" por ubicación — punto verde si ya se contó hoy, gris si
+  // está pendiente. Reemplaza al desplegable: así se ve de un vistazo qué
+  // falta sin tener que abrir nada, y se puede tocar una ya contada para
+  // corregirla.
+  function renderChipsUbicacion() {
+    if (!actual || !actual.posiciones) { $("chipsUbicacion").innerHTML = ""; return; }
+    const contadas = actual.contadas || new Set();
+    const chips = actual.posiciones.map(p => {
+      const contado = contadas.has(p.ubicacion);
+      const activo = p.ubicacion === ubicacionActual ? " activo" : "";
+      const fantasma = p.cantidad === 0 && p.reservado !== 0 ? " · solo reserva" : "";
+      const manual = p.manual ? " · manual" : "";
+      return `<div class="chip${activo}" data-ubic="${p.ubicacion}">
+        <span class="punto ${contado ? "contado" : ""}"></span>
+        ${p.ubicacion} (${CLP(p.cantidad)} uds)${fantasma}${manual}
+      </div>`;
+    }).join("");
+    $("chipsUbicacion").innerHTML = chips +
+      `<div class="chip agregar" id="chipAgregarUbicacion">+ Ubicación no registrada</div>`;
+
+    $("chipsUbicacion").querySelectorAll(".chip[data-ubic]").forEach(el => {
+      el.addEventListener("click", () => seleccionarUbicacion(el.dataset.ubic));
+    });
+    $("chipAgregarUbicacion").addEventListener("click", () => {
+      $("cajaAgregarUbicacion").style.display = "block";
+      $("nuevaUbicacionInput").value = "";
+      $("nuevaUbicacionInput").focus();
+    });
+  }
+
+  // El producto está físicamente en una ubicación donde Odoo no tiene
+  // ningún registro de stock — se agrega a mano; queda con esperado 0, así
+  // que lo que se cuente ahí sale como sobrante hasta que control de
+  // inventario lo revise (Odoo no va a reconocer el nombre automáticamente
+  // al importar el cierre — puede necesitar ajuste manual ahí).
+  function agregarUbicacionManual() {
+    const nombre = $("nuevaUbicacionInput").value.trim();
+    if (!nombre) return;
+    if (!actual.posiciones.some(p => p.ubicacion === nombre)) {
+      actual.posiciones.push({
+        ubicacion: nombre, cantidad: 0, reservado: 0, disponible: 0,
+        sinReserva: false, manual: true, salidasHoy: [],
+      });
+      actual.totalPosiciones = actual.posiciones.length;
+    }
+    $("cajaAgregarUbicacion").style.display = "none";
+    seleccionarUbicacion(nombre);
+  }
+  $("btnConfirmarNuevaUbicacion").addEventListener("click", agregarUbicacionManual);
+  $("btnCancelarNuevaUbicacion").addEventListener("click", () => {
+    $("cajaAgregarUbicacion").style.display = "none";
+  });
 
   function mostrarReservas(data) {
     const box = $("reservasBox");
@@ -289,23 +391,6 @@
       }).join("");
   }
 
-  // Refresca el desplegable de ubicaciones marcando las ya contadas (✓) y
-  // deja preseleccionada la próxima pendiente, sin necesidad de volver a
-  // escanear el mismo producto.
-  function refrescarSelectUbicaciones(cierreSku) {
-    if (!actual || !actual.posiciones) return;
-    const contadasSet = new Set((cierreSku && cierreSku.detalle || []).map(d => d.ubicacion));
-    const sel = $("ubicacionSelect");
-    sel.innerHTML = actual.posiciones.map(p => {
-      const marca = contadasSet.has(p.ubicacion) ? "✓ " : "";
-      const fantasma = p.cantidad === 0 && p.reservado !== 0 ? " — SIN STOCK FÍSICO, SOLO RESERVA" : "";
-      return `<option value="${p.ubicacion}">${marca}${p.ubicacion} (${CLP(p.cantidad)} uds, disp. ${CLP(p.disponible)})${p.sinReserva ? " — SIN RESERVA" : ""}${fantasma}</option>`;
-    }).join("");
-    const pendiente = actual.posiciones.find(p => !contadasSet.has(p.ubicacion));
-    if (pendiente) sel.value = pendiente.ubicacion;
-    mostrarSalidasHoyPosicion();
-  }
-
   async function consultarSku(sku) {
     mostrarEstado("Consultando stock en Odoo...", "cargando");
     limpiarResultado();
@@ -314,8 +399,9 @@
     // campo de cantidad si el foco quedó ahí.
     $("skuInput").value = "";
     const bodega = $("bodegaSelect").value;
+    const fecha = $("fechaSelect").value;
     try {
-      const resp = await fetch(`${URL_BACKEND}?accion=consultar&sku=${encodeURIComponent(sku)}&bodega=${bodega}`);
+      const resp = await fetch(`${URL_BACKEND}?accion=consultar&sku=${encodeURIComponent(sku)}&bodega=${bodega}&fecha=${fecha}`);
       const data = await resp.json();
       if (data.error || !data.encontrado) {
         mostrarEstado(data.error || "SKU no encontrado en esta bodega.", "error");
@@ -324,6 +410,23 @@
       }
       mostrarEstado("");
       actual = data;
+      if (!actual.posiciones) actual.posiciones = [];
+
+      // Fusiona lo que ya se contó hoy (por si este SKU se dejó a medias):
+      // marca esas ubicaciones como contadas y, si alguna fue agregada a
+      // mano (sin registro en Odoo), la vuelve a mostrar aunque Odoo ya no
+      // la traiga en "posiciones".
+      actual.contadas = new Set((data.yaContadas || []).map(y => y.ubicacion));
+      (data.yaContadas || []).forEach(y => {
+        if (!actual.posiciones.some(p => p.ubicacion === y.ubicacion)) {
+          actual.posiciones.push({
+            ubicacion: y.ubicacion, cantidad: 0, reservado: 0, disponible: y.disponible,
+            sinReserva: false, manual: true, salidasHoy: [],
+          });
+        }
+      });
+      actual.totalPosiciones = actual.posiciones.length;
+
       $("prodNombre").textContent = data.producto;
       $("prodSku").textContent = `${data.sku} · ${data.bodega}`;
       $("stStock").textContent = CLP(data.stockTotal);
@@ -331,16 +434,12 @@
       $("stDisponible").textContent = CLP(data.disponible);
       mostrarReservas(data);
 
-      const sel = $("ubicacionSelect");
-      if (data.posiciones && data.posiciones.length) {
-        sel.innerHTML = data.posiciones.map(p => {
-          const fantasma = p.cantidad === 0 && p.reservado !== 0 ? " — SIN STOCK FÍSICO, SOLO RESERVA" : "";
-          return `<option value="${p.ubicacion}">${p.ubicacion} (${CLP(p.cantidad)} uds, disp. ${CLP(p.disponible)})${p.sinReserva ? " — SIN RESERVA" : ""}${fantasma}</option>`;
-        }).join("");
-        mostrarSalidasHoyPosicion();
-      } else {
-        sel.innerHTML = `<option value="">(sin ubicación con stock registrada)</option>`;
+      if (data.yaContadas && data.yaContadas.length) {
+        actualizarTablaContadas({ contadas: data.yaContadas.length, total: actual.totalPosiciones, detalle: data.yaContadas });
       }
+
+      const pendiente = actual.posiciones.find(p => !actual.contadas.has(p.ubicacion));
+      seleccionarUbicacion(pendiente ? pendiente.ubicacion : (actual.posiciones[0] ? actual.posiciones[0].ubicacion : null));
 
       $("resultado").style.display = "block";
       // El foco vuelve a quedar en el campo de SKU: la cantidad se ingresa
@@ -374,11 +473,6 @@
       box.textContent = `⚠️ Diferencia en esta ubicación: ${signo}${diferencia} uds (${diferencia > 0 ? "sobrante" : "faltante"})`;
     }
   }
-  $("ubicacionSelect").addEventListener("change", () => {
-    mostrarDiferencia();
-    mostrarSalidasHoyPosicion();
-  });
-
   function agregarHistorial(data, cantidad, diferencia, cierreSku) {
     const hist = $("historial");
     if (hist.querySelector("span")) hist.innerHTML = "";
@@ -418,7 +512,8 @@
     if (!actual) return;
     const cantidad = parseFloat($("cantidadInput").value);
     if (isNaN(cantidad)) { mostrarEstado("Ingresa la cantidad contada.", "error"); return; }
-    const ubicacion = $("ubicacionSelect").value;
+    if (!ubicacionActual) { mostrarEstado("Selecciona la ubicación contada.", "error"); return; }
+    const ubicacion = ubicacionActual;
     const contadoPor = $("contadoPor").value || "";
     const pos = posicionSeleccionada();
 
@@ -454,9 +549,12 @@
         $("btnConfirmar").textContent = "Confirmar conteo";
         return;
       }
-      agregarHistorial(actual, cantidad, data.diferencia, data.cierreSku);
+      // Si por algo la respuesta no trae cierreSku (backend viejo, error
+      // parcial), seguimos con un valor por defecto en vez de reventar acá.
+      const cierreSku = data.cierreSku || { completo: false, contadas: 0, total: actual.totalPosiciones, detalle: [] };
+      agregarHistorial(actual, cantidad, data.diferencia, cierreSku);
 
-      if (data.cierreSku && data.cierreSku.completo) {
+      if (cierreSku.completo) {
         // Ya se contaron todas las ubicaciones de este SKU -> listo para
         // escanear el siguiente producto.
         mostrarEstado("Conteo guardado ✓ — SKU completo", "cargando");
@@ -467,8 +565,10 @@
         // Quedan ubicaciones de este MISMO SKU -> seguimos sin volver a
         // pistolear, avanzando directo a la próxima ubicación pendiente.
         mostrarEstado("Conteo guardado ✓ — sigue con la próxima ubicación", "cargando");
-        actualizarTablaContadas(data.cierreSku);
-        refrescarSelectUbicaciones(data.cierreSku);
+        actualizarTablaContadas(cierreSku);
+        actual.contadas = new Set(cierreSku.detalle.map(d => d.ubicacion));
+        const pendiente = actual.posiciones.find(p => !actual.contadas.has(p.ubicacion));
+        seleccionarUbicacion(pendiente ? pendiente.ubicacion : ubicacionActual);
         $("cantidadInput").value = "";
         $("diferenciaBox").style.display = "none";
         $("btnConfirmar").disabled = false;
