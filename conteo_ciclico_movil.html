@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Conteo Cíclico — DIB / Decoexpress</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #f4f6f8; color: #1f2d3d;
+         margin: 0; padding: 16px; padding-bottom: 80px; }
+  h1 { font-size: 18px; margin: 0 0 14px; }
+  .panel { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+           margin-bottom: 14px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #5a6b7b; margin-bottom: 6px; }
+  select, input[type=text], input[type=number] {
+    width: 100%; padding: 12px; border: 1px solid #d3dae2; border-radius: 8px;
+    font-size: 18px; box-sizing: border-box; margin-bottom: 12px;
+  }
+  input#skuInput { font-size: 22px; font-weight: 600; text-align: center; letter-spacing: .5px; }
+  button { width: 100%; background: #1f4e78; color: #fff; border: none; padding: 14px;
+           border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #b7c2cc; }
+  button.secundario { background: #3f8f5f; }
+  button.peligro { background: #c0392b; }
+  .fila-botones { display: flex; gap: 10px; }
+  .fila-botones button { flex: 1; }
+  .estado { font-size: 13px; text-align: center; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+  .estado.cargando { background: #eef2f5; color: #5a6b7b; }
+  .estado.error { background: #fdecea; color: #c0392b; }
+  .resultado { display: none; }
+  .resultado h2 { font-size: 16px; margin: 0 0 4px; }
+  .resultado .sub { font-size: 12px; color: #5a6b7b; margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .stat { background: #eef2f5; border-radius: 8px; padding: 10px 6px; text-align: center; }
+  .stat b { display: block; font-size: 18px; color: #1f4e78; }
+  .stat span { font-size: 10px; color: #5a6b7b; }
+  .diferencia { text-align: center; font-size: 15px; font-weight: 600; padding: 10px; border-radius: 8px;
+                margin-bottom: 12px; display: none; }
+  .diferencia.ok { background: #e8f5e9; color: #2e7d32; }
+  .diferencia.mal { background: #fdecea; color: #c0392b; }
+  .historial { font-size: 12px; color: #5a6b7b; margin-top: 6px; max-height: 140px; overflow-y: auto; }
+  .historial div { padding: 4px 0; border-bottom: 1px solid #eef2f5; display: flex; justify-content: space-between; }
+  .config-toggle { font-size: 12px; color: #5a6b7b; text-align: center; margin-top: 10px; cursor: pointer; }
+  input[type=date] { width: 100%; padding: 12px; border: 1px solid #d3dae2; border-radius: 8px;
+    font-size: 16px; box-sizing: border-box; margin-bottom: 12px; }
+  .barra { background: #eef2f5; border-radius: 8px; height: 10px; overflow: hidden; margin-bottom: 8px; }
+  .barra div { background: #3f8f5f; height: 100%; }
+  .progreso-txt { font-size: 13px; color: #5a6b7b; text-align: center; margin-bottom: 8px; }
+  .pendientes { font-size: 12px; max-height: 160px; overflow-y: auto; }
+  .pendientes div { padding: 5px 0; border-bottom: 1px solid #eef2f5; }
+  .reservas { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 10px;
+              font-size: 12px; margin-bottom: 12px; }
+  .reservas .titulo { font-weight: 600; color: #8a6d00; margin-bottom: 4px; }
+  .reservas div.linea { padding: 3px 0; border-bottom: 1px solid #ffecb3; }
+  .cierre-sku { font-size: 13px; text-align: center; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+  .cierre-sku.ok { background: #e8f5e9; color: #2e7d32; }
+  .cierre-sku.mal { background: #fdecea; color: #c0392b; }
+  .cierre-sku.parcial { background: #eef2f5; color: #5a6b7b; }
+  .tabla-contadas { background: #eef2f5; border-radius: 8px; padding: 10px; font-size: 12px; margin-bottom: 12px; }
+  .tabla-contadas .titulo { font-weight: 600; color: #1f4e78; margin-bottom: 4px; }
+  .tabla-contadas .linea { display: flex; justify-content: space-between; gap: 6px;
+                            padding: 4px 0; border-bottom: 1px solid #dde4ea; }
+  .salidas-hoy { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 10px;
+                 font-size: 12px; margin-bottom: 12px; }
+  .salidas-hoy .titulo { font-weight: 600; color: #1565c0; margin-bottom: 4px; }
+  .salidas-hoy div.linea { padding: 3px 0; border-bottom: 1px solid #bbdefb; }
+  .nav { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .nav a { background: #fff; border: 1px solid #d3dae2; border-radius: 8px; padding: 8px 12px;
+           font-size: 12px; font-weight: 600; color: #1f4e78; text-decoration: none;
+           box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .nav a.activo { background: #1f4e78; color: #fff; border-color: #1f4e78; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="index.html">🏠 Inicio</a>
+  <a href="App_Inventarios_Ciclicos.html">📋 Generar plan</a>
+  <a href="conteo_ciclico_movil.html" class="activo">📱 Conteo móvil</a>
+</div>
+
+<h1>Conteo Cíclico</h1>
+
+<div class="panel" id="panelConfig">
+  <label for="bodegaSelect">Bodega</label>
+  <select id="bodegaSelect">
+    <option value="central">Bodega Central</option>
+    <option value="salto">DECOSTORE El Salto</option>
+    <option value="56">Bodega 56</option>
+  </select>
+  <label for="fechaSelect">Fecha de conteo</label>
+  <input type="date" id="fechaSelect">
+  <label for="contadoPor">Contado por</label>
+  <input type="text" id="contadoPor" placeholder="Tu nombre">
+</div>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+    <label style="margin:0;">Avance del día</label>
+    <select id="ordenPendientes" style="width:auto; margin:0; padding:6px; font-size:11px;">
+      <option value="linea">Orden del plan</option>
+      <option value="producto">Producto (A-Z)</option>
+    </select>
+  </div>
+  <div class="progreso-txt" id="progresoTxt">Cargando plan...</div>
+  <div class="barra"><div id="progresoBarra" style="width:0%;"></div></div>
+  <div class="pendientes" id="pendientesLista"></div>
+</div>
+
+<div class="panel">
+  <label for="skuInput">Escanea el SKU</label>
+  <input type="text" id="skuInput" placeholder="Dispara el código..." autocomplete="off" autofocus>
+  <div id="estado"></div>
+
+  <div class="resultado" id="resultado">
+    <h2 id="prodNombre"></h2>
+    <div class="sub" id="prodSku"></div>
+
+    <div class="stats">
+      <div class="stat"><b id="stStock">-</b><span>Stock Total</span></div>
+      <div class="stat"><b id="stReservado">-</b><span>Reservado</span></div>
+      <div class="stat"><b id="stDisponible">-</b><span>Disponible</span></div>
+    </div>
+
+    <div class="reservas" id="reservasBox" style="display:none;"></div>
+    <div class="tabla-contadas" id="tablaContadas" style="display:none;"></div>
+
+    <label for="ubicacionSelect">Ubicación contada</label>
+    <select id="ubicacionSelect"></select>
+    <div class="salidas-hoy" id="salidasHoyBox" style="display:none;"></div>
+
+    <label for="cantidadInput">Cantidad contada en esta ubicación</label>
+    <input type="number" id="cantidadInput" min="0" inputmode="numeric">
+
+    <div class="diferencia" id="diferenciaBox"></div>
+    <div class="cierre-sku" id="cierreSkuBox" style="display:none;"></div>
+
+    <div class="fila-botones">
+      <button class="secundario" id="btnConfirmar">Confirmar conteo</button>
+      <button class="peligro" id="btnCancelar" style="display:none;">Recontar</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <label>Últimos conteos de esta sesión</label>
+  <div class="historial" id="historial"><span style="color:#8a97a3;">Sin conteos todavía.</span></div>
+</div>
+
+<script>
+(function () {
+  const URL_BACKEND = "https://script.google.com/macros/s/AKfycbyZpyow08xrA2hQvfV566FFRhWcKQBfYeppIC1JbC3DaArG1_MM3y-HyhFKOgAVbaNsQg/exec";
+
+  const $ = (id) => document.getElementById(id);
+  const CLP = (n) => Math.round(n).toLocaleString("es-CL");
+
+  let actual = null; // datos del SKU consultado actualmente
+
+  const isoHoy = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const NOMBRE_BODEGA = { central: "Bodega Central", salto: "DECOSTORE El Salto", "56": "Bodega 56" };
+
+  // Recordar bodega, fecha y nombre del contador en este celular
+  try {
+    const b = localStorage.getItem("conteo_bodega");
+    const c = localStorage.getItem("conteo_contador");
+    if (b) $("bodegaSelect").value = b;
+    if (c) $("contadoPor").value = c;
+  } catch (e) {}
+  $("fechaSelect").value = isoHoy();
+
+  $("bodegaSelect").addEventListener("change", () => {
+    try { localStorage.setItem("conteo_bodega", $("bodegaSelect").value); } catch (e) {}
+    cargarProgreso();
+  });
+  $("fechaSelect").addEventListener("change", cargarProgreso);
+  $("contadoPor").addEventListener("input", () => {
+    try { localStorage.setItem("conteo_contador", $("contadoPor").value); } catch (e) {}
+  });
+
+  let ultimoProgreso = null; // guarda la última respuesta para poder reordenar sin re-consultar
+
+  function ordenarPendientes(pendientes) {
+    const criterio = $("ordenPendientes").value;
+    const copia = pendientes.slice();
+    if (criterio === "producto") {
+      copia.sort((a, b) => String(a.producto).localeCompare(String(b.producto), "es"));
+    } else {
+      copia.sort((a, b) => Number(a.linea) - Number(b.linea));
+    }
+    return copia;
+  }
+
+  function renderPendientes() {
+    if (!ultimoProgreso || !ultimoProgreso.pendientes) return;
+    const lista = ordenarPendientes(ultimoProgreso.pendientes);
+    $("pendientesLista").innerHTML = lista.slice(0, 30).map(p =>
+      `<div>${p.sku} — ${p.producto}${p.avance ? ` <span style="color:#c0392b;">(${p.avance} ubic.)</span>` : ""}</div>`
+    ).join("") || '<div style="color:#2e7d32;">✅ Todo contado.</div>';
+  }
+  $("ordenPendientes").addEventListener("change", renderPendientes);
+
+  async function cargarProgreso() {
+    const bodega = NOMBRE_BODEGA[$("bodegaSelect").value];
+    const fecha = $("fechaSelect").value;
+    $("progresoTxt").textContent = "Cargando plan...";
+    $("progresoBarra").style.width = "0%";
+    $("pendientesLista").innerHTML = "";
+    try {
+      const resp = await fetch(`${URL_BACKEND}?accion=progreso&bodega=${encodeURIComponent(bodega)}&fecha=${fecha}`);
+      const data = await resp.json();
+      if (data.error) {
+        $("progresoTxt").textContent = "Error: " + data.error;
+        return;
+      }
+      if (data.planeados === 0) {
+        $("progresoTxt").textContent = "No hay plan publicado para esta bodega/fecha.";
+        return;
+      }
+      const pct = Math.round(100 * data.contados / data.planeados);
+      $("progresoTxt").textContent = `${data.contados} de ${data.planeados} SKU contados (${pct}%)`;
+      $("progresoBarra").style.width = pct + "%";
+      ultimoProgreso = data;
+      renderPendientes();
+    } catch (err) {
+      $("progresoTxt").textContent = "Sin conexión para ver el plan (el escaneo sigue funcionando igual).";
+    }
+  }
+
+  function mostrarEstado(texto, tipo) {
+    const el = $("estado");
+    if (!texto) { el.innerHTML = ""; return; }
+    el.innerHTML = `<div class="estado ${tipo || "cargando"}">${texto}</div>`;
+  }
+
+  function limpiarResultado() {
+    actual = null;
+    $("resultado").style.display = "none";
+    $("diferenciaBox").style.display = "none";
+    $("cierreSkuBox").style.display = "none";
+    $("reservasBox").style.display = "none";
+    $("tablaContadas").style.display = "none";
+    $("salidasHoyBox").style.display = "none";
+    $("btnConfirmar").style.display = "block";
+    $("btnConfirmar").disabled = false;
+    $("btnConfirmar").textContent = "Confirmar conteo";
+    $("btnCancelar").style.display = "none";
+    $("cantidadInput").disabled = false;
+    $("cantidadInput").value = "";
+  }
+
+  function posicionSeleccionada() {
+    if (!actual || !actual.posiciones) return null;
+    const ubic = $("ubicacionSelect").value;
+    return actual.posiciones.find(p => p.ubicacion === ubic) || null;
+  }
+
+  function mostrarReservas(data) {
+    const box = $("reservasBox");
+    if (!data.reservas || !data.reservas.length) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    box.innerHTML = `<div class="titulo">⚠️ ${data.reservas.length} pedido(s) con stock reservado</div>` +
+      data.reservas.map(r =>
+        `<div class="linea">${r.picking} — ${r.destinatario}${r.origen ? " (" + r.origen + ")" : ""}: ${CLP(r.cantidad)} uds</div>`
+      ).join("");
+  }
+
+  function mostrarSalidasHoyPosicion() {
+    const box = $("salidasHoyBox");
+    const pos = posicionSeleccionada();
+    const salidas = pos && pos.salidasHoy ? pos.salidasHoy : [];
+    if (!salidas.length) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    box.innerHTML = `<div class="titulo">📦 ${salidas.length} salida(s) ya ejecutada(s) hoy desde esta ubicación (puede que aún no la retiren físicamente)</div>` +
+      salidas.map(s => `<div class="linea">${s.picking} — ${s.destinatario}: ${CLP(s.cantidad)} uds</div>`).join("");
+  }
+
+  function actualizarTablaContadas(cierreSku) {
+    const box = $("tablaContadas");
+    if (!cierreSku || !cierreSku.detalle || !cierreSku.detalle.length) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    box.innerHTML = `<div class="titulo">Ubicaciones contadas (${cierreSku.contadas}/${cierreSku.total})</div>` +
+      cierreSku.detalle.map(d => {
+        const color = d.diferencia === 0 ? "#2e7d32" : "#c0392b";
+        const signo = d.diferencia > 0 ? "+" : "";
+        return `<div class="linea"><span>${d.ubicacion}</span><span>esperado ${CLP(d.disponible)} · contado ${CLP(d.cantidadContada)}</span><b style="color:${color}">${d.diferencia === 0 ? "OK" : signo + d.diferencia}</b></div>`;
+      }).join("");
+  }
+
+  // Refresca el desplegable de ubicaciones marcando las ya contadas (✓) y
+  // deja preseleccionada la próxima pendiente, sin necesidad de volver a
+  // escanear el mismo producto.
+  function refrescarSelectUbicaciones(cierreSku) {
+    if (!actual || !actual.posiciones) return;
+    const contadasSet = new Set((cierreSku && cierreSku.detalle || []).map(d => d.ubicacion));
+    const sel = $("ubicacionSelect");
+    sel.innerHTML = actual.posiciones.map(p => {
+      const marca = contadasSet.has(p.ubicacion) ? "✓ " : "";
+      const fantasma = p.cantidad === 0 && p.reservado !== 0 ? " — SIN STOCK FÍSICO, SOLO RESERVA" : "";
+      return `<option value="${p.ubicacion}">${marca}${p.ubicacion} (${CLP(p.cantidad)} uds, disp. ${CLP(p.disponible)})${p.sinReserva ? " — SIN RESERVA" : ""}${fantasma}</option>`;
+    }).join("");
+    const pendiente = actual.posiciones.find(p => !contadasSet.has(p.ubicacion));
+    if (pendiente) sel.value = pendiente.ubicacion;
+    mostrarSalidasHoyPosicion();
+  }
+
+  async function consultarSku(sku) {
+    mostrarEstado("Consultando stock en Odoo...", "cargando");
+    limpiarResultado();
+    // Deja el campo listo para el próximo escaneo inmediatamente — evita que
+    // un segundo escaneo (por ejemplo para corregir el código) caiga en el
+    // campo de cantidad si el foco quedó ahí.
+    $("skuInput").value = "";
+    const bodega = $("bodegaSelect").value;
+    try {
+      const resp = await fetch(`${URL_BACKEND}?accion=consultar&sku=${encodeURIComponent(sku)}&bodega=${bodega}`);
+      const data = await resp.json();
+      if (data.error || !data.encontrado) {
+        mostrarEstado(data.error || "SKU no encontrado en esta bodega.", "error");
+        $("skuInput").focus();
+        return;
+      }
+      mostrarEstado("");
+      actual = data;
+      $("prodNombre").textContent = data.producto;
+      $("prodSku").textContent = `${data.sku} · ${data.bodega}`;
+      $("stStock").textContent = CLP(data.stockTotal);
+      $("stReservado").textContent = CLP(data.reservado);
+      $("stDisponible").textContent = CLP(data.disponible);
+      mostrarReservas(data);
+
+      const sel = $("ubicacionSelect");
+      if (data.posiciones && data.posiciones.length) {
+        sel.innerHTML = data.posiciones.map(p => {
+          const fantasma = p.cantidad === 0 && p.reservado !== 0 ? " — SIN STOCK FÍSICO, SOLO RESERVA" : "";
+          return `<option value="${p.ubicacion}">${p.ubicacion} (${CLP(p.cantidad)} uds, disp. ${CLP(p.disponible)})${p.sinReserva ? " — SIN RESERVA" : ""}${fantasma}</option>`;
+        }).join("");
+        mostrarSalidasHoyPosicion();
+      } else {
+        sel.innerHTML = `<option value="">(sin ubicación con stock registrada)</option>`;
+      }
+
+      $("resultado").style.display = "block";
+      // El foco vuelve a quedar en el campo de SKU: la cantidad se ingresa
+      // tocando el campo en pantalla, así el próximo escaneo (aunque sea
+      // para corregir este mismo) siempre cae en el lugar correcto.
+      $("skuInput").focus();
+    } catch (err) {
+      mostrarEstado("Error de conexión: " + err, "error");
+      $("skuInput").focus();
+    }
+  }
+
+  function mostrarDiferencia() {
+    if (!actual) return;
+    const cantidad = parseFloat($("cantidadInput").value);
+    const box = $("diferenciaBox");
+    if (isNaN(cantidad)) { box.style.display = "none"; return; }
+    const pos = posicionSeleccionada();
+    // Diferencia contra lo esperado en LA UBICACIÓN contada, no contra el
+    // total del SKU en toda la bodega — ese total se evalúa aparte, una vez
+    // contadas todas las ubicaciones (ver cierreSkuBox).
+    const disponiblePos = pos ? pos.disponible : actual.disponible;
+    const diferencia = cantidad - disponiblePos;
+    box.style.display = "block";
+    if (diferencia === 0) {
+      box.className = "diferencia ok";
+      box.textContent = "✅ Sin diferencia en esta ubicación";
+    } else {
+      box.className = "diferencia mal";
+      const signo = diferencia > 0 ? "+" : "";
+      box.textContent = `⚠️ Diferencia en esta ubicación: ${signo}${diferencia} uds (${diferencia > 0 ? "sobrante" : "faltante"})`;
+    }
+  }
+  $("ubicacionSelect").addEventListener("change", () => {
+    mostrarDiferencia();
+    mostrarSalidasHoyPosicion();
+  });
+
+  function agregarHistorial(data, cantidad, diferencia, cierreSku) {
+    const hist = $("historial");
+    if (hist.querySelector("span")) hist.innerHTML = "";
+    const linea = document.createElement("div");
+    const signo = diferencia > 0 ? "+" : "";
+    let extra = "";
+    if (cierreSku && cierreSku.completo) {
+      const st = signo + cierreSku.diferenciaTotal;
+      extra = ` · SKU completo (${cierreSku.diferenciaTotal === 0 ? "sin dif. total" : "dif. total " + (cierreSku.diferenciaTotal > 0 ? "+" : "") + cierreSku.diferenciaTotal})`;
+    } else if (cierreSku) {
+      extra = ` · ${cierreSku.contadas}/${cierreSku.total} ubic.`;
+    }
+    linea.innerHTML = `<span>${data.sku} — ${data.producto.slice(0, 28)}${extra}</span><b style="color:${diferencia === 0 ? "#2e7d32" : "#c0392b"}">${diferencia === 0 ? "OK" : signo + diferencia}</b>`;
+    hist.prepend(linea);
+  }
+
+  function mostrarCierreSku(cierreSku) {
+    const box = $("cierreSkuBox");
+    if (!cierreSku) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    if (!cierreSku.completo) {
+      box.className = "cierre-sku parcial";
+      box.textContent = `Ubicación registrada — ${cierreSku.contadas} de ${cierreSku.total} ubicación(es) de este SKU contadas hoy.`;
+      return;
+    }
+    if (cierreSku.diferenciaTotal === 0) {
+      box.className = "cierre-sku ok";
+      box.textContent = "✅ Todas las ubicaciones de este SKU contadas — sin diferencia total.";
+    } else {
+      box.className = "cierre-sku mal";
+      const signo = cierreSku.diferenciaTotal > 0 ? "+" : "";
+      box.textContent = `⚠️ Todas las ubicaciones contadas — diferencia total del SKU: ${signo}${cierreSku.diferenciaTotal} uds.`;
+    }
+  }
+
+  async function confirmarConteo() {
+    if (!actual) return;
+    const cantidad = parseFloat($("cantidadInput").value);
+    if (isNaN(cantidad)) { mostrarEstado("Ingresa la cantidad contada.", "error"); return; }
+    const ubicacion = $("ubicacionSelect").value;
+    const contadoPor = $("contadoPor").value || "";
+    const pos = posicionSeleccionada();
+
+    $("btnConfirmar").disabled = true;
+    $("btnConfirmar").textContent = "Guardando...";
+
+    const payload = {
+      bodega: actual.bodega,
+      fechaPlan: $("fechaSelect").value,
+      sku: actual.sku,
+      producto: actual.producto,
+      ubicacion: ubicacion,
+      stockUbicacion: pos ? pos.cantidad : 0,
+      reservadoUbicacion: pos ? pos.reservado : 0,
+      stockTotal: actual.stockTotal,
+      reservado: actual.reservado,
+      disponible: actual.disponible,
+      totalPosiciones: actual.totalPosiciones || (actual.posiciones ? actual.posiciones.length : 1),
+      cantidadContada: cantidad,
+      contadoPor: contadoPor,
+    };
+
+    try {
+      const resp = await fetch(URL_BACKEND, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" }, // evita preflight CORS
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        mostrarEstado("Error al guardar: " + data.error, "error");
+        $("btnConfirmar").disabled = false;
+        $("btnConfirmar").textContent = "Confirmar conteo";
+        return;
+      }
+      agregarHistorial(actual, cantidad, data.diferencia, data.cierreSku);
+
+      if (data.cierreSku && data.cierreSku.completo) {
+        // Ya se contaron todas las ubicaciones de este SKU -> listo para
+        // escanear el siguiente producto.
+        mostrarEstado("Conteo guardado ✓ — SKU completo", "cargando");
+        limpiarResultado();
+        $("skuInput").value = "";
+        $("skuInput").focus();
+      } else {
+        // Quedan ubicaciones de este MISMO SKU -> seguimos sin volver a
+        // pistolear, avanzando directo a la próxima ubicación pendiente.
+        mostrarEstado("Conteo guardado ✓ — sigue con la próxima ubicación", "cargando");
+        actualizarTablaContadas(data.cierreSku);
+        refrescarSelectUbicaciones(data.cierreSku);
+        $("cantidadInput").value = "";
+        $("diferenciaBox").style.display = "none";
+        $("btnConfirmar").disabled = false;
+        $("btnConfirmar").textContent = "Confirmar conteo";
+        $("cantidadInput").focus();
+      }
+      cargarProgreso();
+    } catch (err) {
+      mostrarEstado("Error de conexión al guardar: " + err, "error");
+      $("btnConfirmar").disabled = false;
+      $("btnConfirmar").textContent = "Confirmar conteo";
+    }
+  }
+
+  $("skuInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const sku = $("skuInput").value.trim();
+      if (sku) consultarSku(sku);
+    }
+  });
+  $("cantidadInput").addEventListener("input", mostrarDiferencia);
+  $("btnConfirmar").addEventListener("click", confirmarConteo);
+
+  cargarProgreso();
+  $("skuInput").focus();
+})();
+</script>
+</body>
+</html>
