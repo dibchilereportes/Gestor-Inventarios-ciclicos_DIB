@@ -86,6 +86,19 @@
   .pendientes .fila-pendiente { display: flex; justify-content: space-between; align-items: center;
                                  gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef2f5; }
   .pendientes .fila-pendiente button { width: auto; padding: 5px 10px; font-size: 11px; flex-shrink: 0; }
+  .tabla-diferencias { font-size: 12px; max-height: 280px; overflow-y: auto; }
+  .tabla-diferencias .fila-dif { display: flex; justify-content: space-between; align-items: flex-start;
+                                  gap: 8px; padding: 7px 0; border-bottom: 1px solid #eef2f5; }
+  .tabla-diferencias .fila-dif .info { flex: 1; min-width: 0; }
+  .tabla-diferencias .fila-dif .info .sku { font-weight: 600; color: #1f4e78; }
+  .tabla-diferencias .fila-dif .info .prod { color: #3a4753; }
+  .tabla-diferencias .fila-dif .info .ubic { color: #8a97a3; font-size: 11px; }
+  .tabla-diferencias .fila-dif .cifras { text-align: right; flex-shrink: 0; white-space: nowrap; font-size: 11px; color: #5a6b7b; }
+  .tabla-diferencias .fila-dif .cifras .dif { font-size: 14px; font-weight: 700; }
+  .tabla-diferencias .fila-dif .cifras .dif.sobra { color: #2e7d32; }
+  .tabla-diferencias .fila-dif .cifras .dif.falta { color: #c0392b; }
+  .tabla-diferencias .fila-dif .cifras .dif.cero { color: #8a97a3; }
+  .btn-refrescar { width: auto; margin: 0; padding: 6px 10px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -122,6 +135,15 @@
   <div class="progreso-txt" id="progresoTxt">Cargando plan...</div>
   <div class="barra"><div id="progresoBarra" style="width:0%;"></div></div>
   <div class="pendientes" id="pendientesLista"></div>
+</div>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+    <label style="margin:0;">Diferencias del día</label>
+    <button type="button" id="btnRefrescarDiferencias" class="secundario btn-refrescar">↻ Actualizar</button>
+  </div>
+  <div class="progreso-txt" id="diferenciasTxt">Cargando...</div>
+  <div class="tabla-diferencias" id="diferenciasLista"></div>
 </div>
 
 <div class="panel">
@@ -201,8 +223,12 @@
   $("bodegaSelect").addEventListener("change", () => {
     try { localStorage.setItem("conteo_bodega", $("bodegaSelect").value); } catch (e) {}
     cargarProgreso();
+    cargarDiferencias();
   });
-  $("fechaSelect").addEventListener("change", cargarProgreso);
+  $("fechaSelect").addEventListener("change", () => {
+    cargarProgreso();
+    cargarDiferencias();
+  });
   $("contadoPor").addEventListener("input", () => {
     try { localStorage.setItem("conteo_contador", $("contadoPor").value); } catch (e) {}
   });
@@ -240,6 +266,50 @@
     });
   }
   $("ordenPendientes").addEventListener("change", renderPendientes);
+
+  // Diferencias del día: para que el contador mismo vea qué quedó con
+  // diferencia (y de qué tamaño) y decida si vale la pena recontar, sin
+  // tener que abrir la planilla. Se lee de "Detalle Ubicaciones" (último
+  // conteo por ubicación), ordenado por magnitud de diferencia.
+  async function cargarDiferencias() {
+    const bodega = NOMBRE_BODEGA[$("bodegaSelect").value];
+    const fecha = $("fechaSelect").value;
+    $("diferenciasTxt").textContent = "Cargando...";
+    $("diferenciasLista").innerHTML = "";
+    try {
+      const resp = await fetch(`${URL_BACKEND}?accion=diferencias&bodega=${encodeURIComponent(bodega)}&fecha=${fecha}`);
+      const data = await resp.json();
+      if (data.error) {
+        $("diferenciasTxt").textContent = "Error: " + data.error;
+        return;
+      }
+      const items = data.items || [];
+      if (!items.length) {
+        $("diferenciasTxt").textContent = "Sin conteos registrados todavía hoy.";
+        return;
+      }
+      const conDif = items.filter(it => it.diferencia !== 0).length;
+      $("diferenciasTxt").textContent = `${items.length} ubicación(es) contadas — ${conDif} con diferencia.`;
+      $("diferenciasLista").innerHTML = items.map(it => {
+        const clase = it.diferencia > 0 ? "sobra" : (it.diferencia < 0 ? "falta" : "cero");
+        const signo = it.diferencia > 0 ? "+" : "";
+        return `<div class="fila-dif">
+          <div class="info">
+            <div class="sku">${it.sku}</div>
+            <div class="prod">${it.producto}</div>
+            <div class="ubic">${it.ubicacion}</div>
+          </div>
+          <div class="cifras">
+            <div>Teo ${CLP(it.cantidadTeorica)} · Cont ${CLP(it.cantidadContada)}</div>
+            <div class="dif ${clase}">${signo}${CLP(it.diferencia)}</div>
+          </div>
+        </div>`;
+      }).join("");
+    } catch (err) {
+      $("diferenciasTxt").textContent = "Error de conexión: " + err;
+    }
+  }
+  $("btnRefrescarDiferencias").addEventListener("click", cargarDiferencias);
 
   async function cargarProgreso() {
     const bodega = NOMBRE_BODEGA[$("bodegaSelect").value];
@@ -601,6 +671,7 @@
         $("cantidadInput").focus();
       }
       cargarProgreso();
+      cargarDiferencias();
     } catch (err) {
       mostrarEstado("Error de conexión al guardar: " + err, "error");
       $("btnConfirmar").disabled = false;
@@ -618,6 +689,7 @@
   $("btnConfirmar").addEventListener("click", confirmarConteo);
 
   cargarProgreso();
+  cargarDiferencias();
   $("skuInput").focus();
 })();
 </script>
